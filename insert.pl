@@ -26,14 +26,14 @@ my $refmping=readsam($opt{mPing});
 ##cut hte part of mPing in read and then mapp to 
 print "Step2: Map read to genome\n";
 #### status: store information for pair, readname->read1or2->0,1,2: 0 mean read in mping, 1 mean read cover partial mping, 2 mean read not cover mping
-my $status=map2genome($opt{ref},$refmping) unless (-e "HEG4_2.3.mPing.stampy.sam" and -e "HEG4_2.3.mPing.clean_mping.stampy.sam");
+my $status=map2genome($opt{ref},$refmping);
 ##read reference sam and store alignment in hash same as mPing
 
 print "Step3: Read genome sam\n";
-my $refgenome1=readsam("HEG4_2.3.mPing.stampy.sam");
-my $refgenome2=readsam("HEG4_2.3.mPing.bwa.sam");
-my $refgenome3=readsam("HEG4_2.3.mPing.stampy.clean_mPing.sam");
-my $refgenome4=readsam("HEG4_2.3.mPing.bwa.clean_mPing.sam");
+my $refgenome1=readsam2("HEG4_2.3.mPing.stampy.sam");
+my $refgenome2=readsam2("HEG4_2.3.mPing.bwa.sam");
+my $refgenome3=readsam2("HEG4_2.3.mPing.stampy.clean_mPing.sam");
+my $refgenome4=readsam2("HEG4_2.3.mPing.bwa.clean_mPing.sam");
 
 print "Step4: Find insertions\n";
 my %insert;
@@ -56,26 +56,28 @@ foreach(keys %$refmping){
    }
    print "\n\n";
    if ($refgenome3->{$read}){
-      my ($chr1,$breakpoint1,$startonreads1,$read1); ##chromosome, breakpoint on chromosome, start position on reads, read sequence
-      my ($chr2,$breakpoint2,$startonreads2,$read2);
-      #status: store information for pair, readname->read1or2->0,1,2: 0 mean read in mping, 1 mean read cover partial mping, 2 mean read not cover mping
-      if ($status->{$read}->{1}==0 and $status->{$read}->{2}==0){     ###both reads in mPing, no effect
+      #my ($chr1,$breakpoint1,$startonreads1,$read1,$strand1); ##chromosome, breakpoint on chromosome, start position on reads, read sequence
+      #my ($chr2,$breakpoint2,$startonreads2,$read2,$strand2);
+      #status: store information for pair, readname->read1or2->(status,mping in read) status 0,1,2: 0 mean read in mping, 1 mean read cover partial mping, 2 mean read not cover mping. mping in read 5 or 3: 5 mean mping in 5 primer of reads and 3 mean in 3 primer of reads
+      if ($status->{$read}->{1}->[0]==0 and $status->{$read}->{2}->[0]==0){     ###both reads in mPing, no effect
          $summary{"02.Pair_in_mPing"}++;
-      }elsif($status->{$read}->{1}==0 and $status->{$read}->{2}==2){  ###one in mPing, one on flanking, support reads
+      }elsif($status->{$read}->{1}->[0]==0 and $status->{$read}->{2}->[0]==2){  ###one in mPing, one on flanking, support reads
          $summary{"03.Support_mPing"}++;
-      }elsif($status->{$read}->{2}==0 and $status->{$read}->{1}==2){  ###one in mPing, one on flanking, support reads
+      }elsif($status->{$read}->{2}->[0]==0 and $status->{$read}->{1}->[0]==2){  ###one in mPing, one on flanking, support reads
          $summary{"03.Support_mPing"}++;
-      }elsif($status->{$read}->{1}==1 and $status->{$read}->{2}==1){  ###both reads cover boundary
+      }elsif($status->{$read}->{1}->[0]==1 and $status->{$read}->{2}->[0]==1){  ###both reads cover boundary
          $summary{"04.Pair_on_Boundary"}++;
-         my ($chr1,$breakpoint1,$startonreads1,$read1)=analyze($refgenome3->{$read}->[0]);
-         my ($chr2,$breakpoint2,$startonreads2,$read2)=analyze($refgenome3->{$read}->[1]);
-      }elsif($status->{$read}->{1}==1 and $status->{$read}->{2}==0){  ###one in mPing, one on boundary
+         my ($chr1,$breakpoint1,$startonreads1,$read1,$strand1)=analyze($refgenome3->{$read}->[0],$status->{$read}->{1}->[1]);
+         push @{$insert{$chr1}{$breakpoint1}},[$startonreads1,$read1,$strand1,$read,1,$status->{$read}->{1}->[1]] unless ($chr1 eq "NA");
+         my ($chr2,$breakpoint2,$startonreads2,$read2,$strand2)=analyze($refgenome3->{$read}->[1],$status->{$read}->{2}->[1]);
+         push @{$insert{$chr2}{$breakpoint2}},[$startonreads2,$read2,$strand2,$read,2,$status->{$read}->{1}->[1]] unless ($chr2 eq "NA");
+      }elsif($status->{$read}->{1}->[0]==1 and $status->{$read}->{2}->[0]==0){  ###one in mPing, one on boundary
          $summary{"05.One_mPing_one_Boundary"}++;
-      }elsif($status->{$read}->{1}==0 and $status->{$read}->{2}==1){  ###one in mPing, one on boundary
+      }elsif($status->{$read}->{1}->[0]==0 and $status->{$read}->{2}->[0]==1){  ###one in mPing, one on boundary
          $summary{"05.One_mPing_one_Boundary"}++;
-      }elsif($status->{$read}->{1}==1 and $status->{$read}->{2}==2){  ###one on boundary, one on flanking
+      }elsif($status->{$read}->{1}->[0]==1 and $status->{$read}->{2}->[0]==2){  ###one on boundary, one on flanking
          $summary{"06.One_Flanking_one_Boundary"}++;
-      }elsif($status->{$read}->{1}==2 and $status->{$read}->{2}==1){  ###one on boundary, one on flanking
+      }elsif($status->{$read}->{1}->[0]==2 and $status->{$read}->{2}->[0]==1){  ###one on boundary, one on flanking
          $summary{"06.One_Flanking_one_Boundary"}++;
       }
    }
@@ -85,6 +87,31 @@ print "Step5: Summary:\n";
 foreach(sort keys %summary){
    print "$_\t$summary{$_}\n";
 }
+
+my $refseq=getfastaseq($opt{ref});
+foreach my $chr (sort keys %insert){
+   foreach my $bp (sort {$a <=> $b} keys %{$insert{$chr}}){
+     my $ref=substr($refseq->{$chr},$bp-201,500);
+     $ref=~tr/actg/ACTG/;
+     #my $ref="N" x 400;
+     print ">$chr $bp\n$ref\n";
+     my @align=@{$insert{$chr}{$bp}};
+     for(my $i=0;$i<@align;$i++){
+        if (($align[$i]->[5] == 5 and $align[$i]->[2] == 1) or ($align[$i]->[5] == 3 and $align[$i]->[2] == 0)){ ##mping in 5 and read formard mapped and 3,0
+           my $read=" " x 200;
+           $sequence=sprintf("%-90s",$align[$i]->[1]);
+           $read.="$sequence  $align[$i]->[2]  $align[$i]->[3]  $align[$i]->[4]  $align[$i]->[5]\n";
+           print "$read\n";
+        }else{
+           my $read=sprintf("%200s",$align[$i]->[1]);
+           my $temp=" " x 90;
+           $read.="$temp  $align[$i]->[2]  $align[$i]->[3]  $align[$i]->[4]  $align[$i]->[5]\n";
+           print "$read\n";
+        }
+     }
+   }
+}
+
 
 
 ############################
@@ -130,7 +157,9 @@ if (1){
 #`rm $read1.sai $read2.sai $read3.sai $read4.sai`;
 #`rm $index.sthash $index.stidx`;
 #`rm $read1 $read2`;
-#`rm $read3 $read4`;
+`rm $read3 $read4`;
+#`rm $prefix.bwa.bam $prefix.bwa.sam $prefix.bwa.clean_mPing.sam $prefix.bwa.clean_mPing.bam`;
+#`rm $prefix.stampy.sam $prefix.stampy.clean_mPing.sam`;
 }
 return $status;
 }
@@ -142,7 +171,7 @@ my $prefix1=basename($read1,".fq");
 my $prefix2=basename($read2,".fq");
 my $prefix0=basename($read1,".p1.fq");
 
-my %status; ## store information for pair, readname->read1or2->0,1,2: 0 mean read in mping, 1 mean read cover partial mping, 2 mean read not cover mping
+my %status; ## store information for pair, readname->read1or2->(status,five or three) status 0,1,2: 0 mean read in mping, 1 mean read cover partial mping, 2 mean read not cover mping. five or three mean five primer was mPing and three primer is mPing
 print "Remove part in reads that match mPing:\n";
 open OUT1, ">$prefix1.clean_mPing.fq" or die "%!";
 open OUT2, ">$prefix2.clean_mPing.fq" or die "%!";
@@ -210,7 +239,7 @@ for(my $i=0;$i<2;$i++){
    if ($unit[5]=~/^\d+M$/){ ### perfect match
       $start=0;
       $len  =length $unit[9];
-      $status->{$unit[0]}->{$pair}=0; 
+      $status->{$unit[0]}->{$pair}=[0,0]; 
    }elsif($unit[5]=~/^(\d+.*?)(\d+)M$/){ ###match at right
       my $length=$2;
       my $subalign=$1;
@@ -234,11 +263,12 @@ for(my $i=0;$i<2;$i++){
             $start=$length;
             $len  =$add;
          }
-         $status->{$unit[0]}->{$pair}=1;
+         $direct= $strand == 1 ? 3 : 5;
+         $status->{$unit[0]}->{$pair}=[1,$direct];
       }else{ ### match in subalign larger than match at the end, probably unreliable align
          $start=0;
          $len  =length $unit[9];
-         $status->{$unit[0]}->{$pair}=2;
+         $status->{$unit[0]}->{$pair}=[2,0];
          print "Strange subalign: $align->[$i]\n";
       }
    }elsif($unit[5]=~/^(\d+)M(\d+.*)$/){ ###match at left
@@ -263,28 +293,131 @@ for(my $i=0;$i<2;$i++){
             $start=0;
             $len  =$add;
          }
-         $status->{$unit[0]}->{$pair}=1;
+         $direct= $strand == 1 ? 5 : 3;
+         $status->{$unit[0]}->{$pair}=[1,$direct];
       }else{ ### match in subalign larger than match at the end, probably unreliable align
          $start=0;
          $len  =length $unit[9];
-         $status->{$unit[0]}->{$pair}=2;
+         $status->{$unit[0]}->{$pair}=[2,0];
          print "Strange subalign: $align->[$i]\n";
       }
 
    }elsif($unit[5]=~/\*/){ ### * no match
       $start=0;
       $len  =length $unit[9];
-      $status->{$unit[0]}->{$pair}=2;
+      $status->{$unit[0]}->{$pair}=[2,0];
    }else{ ### other unreliable match
       $start=0;
       $len  =length $unit[9];
-      $status->{$unit[0]}->{$pair}=2;
+      $status->{$unit[0]}->{$pair}=[2,0];
       print "Strange: $align->[$i]\n";
    }
    $hash{$pair}=[$start,$len];
    print "Read $pair: $start, $len\n";
 }
 return \%hash;
+}
+
+sub analyze
+{
+my ($align,$direct)=@_;
+#print Dumper($align);
+my @unit=split("\t",$align);
+my $flag=samflag($unit[1]);
+my $pair= $flag=~/\'64\'/ ? 1 : 2;    #1 for read 1, 2 for read2
+my $strand = $flag=~/\'16\'/ ? 1 : 0; #0 for forward, 1 for reverse
+#print "$pair in Pair\nStrand: $strand\n";
+
+##parse cigar to retrieve matches on genome
+##chr
+##breakpoint
+##strand
+##startonread
+##readsequence  
+my ($chr,$breakpoint,$start,$read); 
+if ($unit[5]=~/^(\d+)M$/){ ### perfect match
+   $chr=$unit[2];
+   if ($strand == 1){
+      $breakpoint=$direct == 5 ? $unit[3] : $unit[3]+length $unit[9];
+   }else{
+      $breakpoint=$direct == 5 ? $unit[3]+length $unit[9] : $unit[3];
+   }
+   $start=0;
+   $read=$unit[9];
+}elsif($unit[5]=~/^(\d+.*?)(\d+)M$/){ ###match at right
+      my $length=$2;
+      my $subalign=$1;
+      my $add; ### add length if subalign
+      my $maxm=0; ### max Match length in subalign
+      while($subalign=~/(\d+)(\D+)/g){
+         print "Sub: $1\t$2\n";
+         my $t=$1;
+         if ($2=~/M/){
+            $maxm= $t > $maxm ? $t : $maxm;
+         }
+      }
+      $add=(length $unit[9])-$length;
+      print "MAX match in sub: $maxm\tLength of match: $length\n";
+      if ($maxm <= $length){ ### match is subalign smaller than match at the end
+         $chr=$unit[2];
+         if ($strand == 1){
+            $breakpoint=$direct == 5 ? $unit[3] : $unit[3]+$length;
+         }else{
+            $breakpoint=$direct == 5 ? $unit[3]+$length : $unit[3];
+         }
+         $start=$add;
+         $read=$unit[9];
+      }else{ ### match in subalign larger than match at the end, probably unreliable align
+         print "Strange subalign: $align\n";
+         $chr="NA";        
+         $breakpoint="NA";
+         $start="NA";
+         $read="NA";
+
+      }
+}elsif($unit[5]=~/^(\d+)M(\d+.*)$/){ ###match at left
+      my $length=$1;
+      my $subalign=$2;
+      my $add=0;my $maxm=0;
+      print "Subalign: $subalign\n";
+      while($subalign=~/(\d+)(\D+)/g){
+         my $t=$1;
+         print "Add and \$1: $add\t$1\n";
+         if ($2=~/M/){
+            $maxm= $t > $maxm ? $t : $maxm;
+         }
+      } 
+      $add=(length $unit[9])-$length; 
+      if ($maxm < $length){ ### match is subalign smaller than match at the end
+         $chr=$unit[2];  
+         if ($strand == 1){
+            $breakpoint=$direct == 5 ? $unit[3] : $unit[3]+$length;
+         }else{
+            $breakpoint=$direct == 5 ? $unit[3]+$length : $unit[3];
+         }
+         $start=0;
+         $read=$unit[9];
+      }else{ ### match in subalign larger than match at the end, probably unreliable align
+         print "Strange subalign: $align\n";
+         $chr="NA";       
+         $breakpoint="NA";
+         $start="NA";
+         $read="NA";
+
+      }
+}elsif($unit[5]=~/\*/){ ### * no match
+      $chr="NA";   
+      $breakpoint="NA";
+      $start="NA";
+      $read="NA";
+}else{ ### other unreliable match
+      print "Strange: $align->[$i]\n";
+      $chr="NA";               
+      $breakpoint="NA";
+      $start="NA";
+      $read="NA";
+}
+return ($chr,$breakpoint,$start,$read,$strand);
 }
 
 
@@ -329,6 +462,52 @@ close IN;
 close OUT;
 return \%hash;
 }
+
+sub readsam2
+{
+my ($file)=@_;
+my %hash;
+my %count;
+open IN, "$file" or die "$!";
+while(<IN>){
+    chomp $_;
+    next if ($_=~/^$/ or $_=~/^@/);
+    my $read=$_;
+    my @unit=split("\t",$read);
+    my $flag=samflag($unit[1]);
+    my $pair= $flag=~/\'64\'/ ? 0 : 1;    #0 for read 1, 1 for read2
+    $count{$unit[0]}++;
+    $hash{$unit[0]}->[$pair]=$read;
+}
+close IN;
+return \%hash;
+}
+
+sub getfastaseq
+{
+$/=">";
+my %hash;
+my ($file)=@_;
+open IN,"$file" or die "$!";
+while (<IN>){
+    next if (length $_ < 2);
+    my @unit=split("\n",$_);
+    my $temp=shift @unit;
+    my @temp1=split(" ",$temp);
+    my $head=$temp1[0];
+    my $seq=join("\n",@unit);
+    $seq=~s/\>//g;
+    $seq=~s/\n//g;
+    $seq=~s/\s//g;
+    #print "$head\n";
+    $hash{$head}=$seq;
+}
+$/="\n";
+return \%hash;
+}
+
+
+
 
 sub samflag
 {
