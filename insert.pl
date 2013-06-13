@@ -70,7 +70,7 @@ foreach(keys %$refmping){
          my ($chr1,$breakpoint1,$startonreads1,$read1,$strand1)=analyze($refgenome3->{$read}->[0],$status->{$read}->{1}->[1]);
          push @{$insert{$chr1}{$breakpoint1}},[$startonreads1,$read1,$strand1,$read,1,$status->{$read}->{1}->[1]] unless ($chr1 eq "NA");
          my ($chr2,$breakpoint2,$startonreads2,$read2,$strand2)=analyze($refgenome3->{$read}->[1],$status->{$read}->{2}->[1]);
-         push @{$insert{$chr2}{$breakpoint2}},[$startonreads2,$read2,$strand2,$read,2,$status->{$read}->{1}->[1]] unless ($chr2 eq "NA");
+         push @{$insert{$chr2}{$breakpoint2}},[$startonreads2,$read2,$strand2,$read,2,$status->{$read}->{2}->[1]] unless ($chr2 eq "NA");
       }elsif($status->{$read}->{1}->[0]==1 and $status->{$read}->{2}->[0]==0){  ###one in mPing, one on boundary
          $summary{"05.One_mPing_one_Boundary"}++;
       }elsif($status->{$read}->{1}->[0]==0 and $status->{$read}->{2}->[0]==1){  ###one in mPing, one on boundary
@@ -88,6 +88,7 @@ foreach(sort keys %summary){
    print "$_\t$summary{$_}\n";
 }
 
+print "Step6: Print Align:\n";
 my $refseq=getfastaseq($opt{ref});
 foreach my $chr (sort keys %insert){
    foreach my $bp (sort {$a <=> $b} keys %{$insert{$chr}}){
@@ -97,15 +98,15 @@ foreach my $chr (sort keys %insert){
      print ">$chr $bp\n$ref\n";
      my @align=@{$insert{$chr}{$bp}};
      for(my $i=0;$i<@align;$i++){
-        if (($align[$i]->[5] == 5 and $align[$i]->[2] == 1) or ($align[$i]->[5] == 3 and $align[$i]->[2] == 0)){ ##mping in 5 and read formard mapped and 3,0
+        if (($align[$i]->[5] > 40 and $align[$i]->[2] == 0) or ($align[$i]->[5] < 40 and $align[$i]->[2] == 1 )){ ##downstream of insertion
            my $read=" " x 200;
            $sequence=sprintf("%-90s",$align[$i]->[1]);
-           $read.="$sequence  $align[$i]->[2]  $align[$i]->[3]  $align[$i]->[4]  $align[$i]->[5]\n";
+           $read.="$sequence  $align[$i]->[2]  $align[$i]->[3]  $align[$i]->[4]  $align[$i]->[5]";
            print "$read\n";
         }else{
            my $read=sprintf("%200s",$align[$i]->[1]);
            my $temp=" " x 90;
-           $read.="$temp  $align[$i]->[2]  $align[$i]->[3]  $align[$i]->[4]  $align[$i]->[5]\n";
+           $read.="$temp  $align[$i]->[2]  $align[$i]->[3]  $align[$i]->[4]  $align[$i]->[5]";
            print "$read\n";
         }
      }
@@ -263,8 +264,9 @@ for(my $i=0;$i<2;$i++){
             $start=$length;
             $len  =$add;
          }
-         $direct= $strand == 1 ? 3 : 5;
+         $direct= $strand == 0 ? 30 : 51;
          $status->{$unit[0]}->{$pair}=[1,$direct];
+         print "Direct: $direct\n";
       }else{ ### match in subalign larger than match at the end, probably unreliable align
          $start=0;
          $len  =length $unit[9];
@@ -293,7 +295,7 @@ for(my $i=0;$i<2;$i++){
             $start=0;
             $len  =$add;
          }
-         $direct= $strand == 1 ? 5 : 3;
+         $direct= $strand == 0 ? 50 : 31;
          $status->{$unit[0]}->{$pair}=[1,$direct];
       }else{ ### match in subalign larger than match at the end, probably unreliable align
          $start=0;
@@ -337,10 +339,10 @@ my $strand = $flag=~/\'16\'/ ? 1 : 0; #0 for forward, 1 for reverse
 my ($chr,$breakpoint,$start,$read); 
 if ($unit[5]=~/^(\d+)M$/){ ### perfect match
    $chr=$unit[2];
-   if ($strand == 1){
-      $breakpoint=$direct == 5 ? $unit[3] : $unit[3]+length $unit[9];
+   if ($strand == 0){
+      $breakpoint=$direct > 40  ? $unit[3] : $unit[3]+length $unit[9]; ## 50 or 51
    }else{
-      $breakpoint=$direct == 5 ? $unit[3]+length $unit[9] : $unit[3];
+      $breakpoint=$direct > 40  ? $unit[3]+length $unit[9] : $unit[3]; ## 50 or 51
    }
    $start=0;
    $read=$unit[9];
@@ -360,10 +362,10 @@ if ($unit[5]=~/^(\d+)M$/){ ### perfect match
       print "MAX match in sub: $maxm\tLength of match: $length\n";
       if ($maxm <= $length){ ### match is subalign smaller than match at the end
          $chr=$unit[2];
-         if ($strand == 1){
-            $breakpoint=$direct == 5 ? $unit[3] : $unit[3]+$length;
+         if ($strand == 0){
+            $breakpoint=$direct > 40 ? $unit[3] : $unit[3]+$length;
          }else{
-            $breakpoint=$direct == 5 ? $unit[3]+$length : $unit[3];
+            $breakpoint=$direct > 40 ? $unit[3]+$length : $unit[3];
          }
          $start=$add;
          $read=$unit[9];
@@ -390,10 +392,10 @@ if ($unit[5]=~/^(\d+)M$/){ ### perfect match
       $add=(length $unit[9])-$length; 
       if ($maxm < $length){ ### match is subalign smaller than match at the end
          $chr=$unit[2];  
-         if ($strand == 1){
-            $breakpoint=$direct == 5 ? $unit[3] : $unit[3]+$length;
+         if ($strand == 0){
+            $breakpoint=$direct > 40 ? $unit[3] : $unit[3]+$length;
          }else{
-            $breakpoint=$direct == 5 ? $unit[3]+$length : $unit[3];
+            $breakpoint=$direct > 40 ? $unit[3]+$length : $unit[3];
          }
          $start=0;
          $read=$unit[9];
